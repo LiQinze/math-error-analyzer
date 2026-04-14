@@ -7,8 +7,12 @@ import json
 import os
 from datetime import datetime, timezone, timedelta
 
-DB_PATH = os.environ.get("DATABASE_PATH") or os.path.expanduser("~/math-error-analyzer/error_records.db")
+# Render 上 /opt/render 不可写，用 /tmp
+DB_PATH = os.environ.get("DATABASE_PATH") or "/tmp/error_records.db"
 BEIJING_TZ = timezone(timedelta(hours=8))
+
+# 确保目录存在
+os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 
 def init_db():
