@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数学错题分析</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f0f2f5; color: #1d2129; }
+  .container { max-width: 760px; margin: 0 auto; padding: 24px 16px; }
+  h1 { font-size: 22px; font-weight: 600; margin-bottom: 20px; color: #1a1a1a; }
+  .card { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .upload-area { border: 2px dashed #d0d7de; border-radius: 10px; padding: 32px; text-align: center; cursor: pointer; transition: border-color 0.2s; }
+  .upload-area:hover { border-color: #1d81e2; }
+  .upload-area input { display: none; }
+  .upload-icon { font-size: 40px; margin-bottom: 8px; }
+  .upload-tip { font-size: 14px; color: #656d76; }
+  #preview { max-width: 100%; max-height: 300px; border-radius: 8px; margin-top: 12px; display: none; }
+  .extra-input { width: 100%; padding: 10px 12px; border: 1px solid #d0d7de; border-radius: 8px; font-size: 14px; margin-top: 12px; }
+  .btn { background: #1d81e2; color: #fff; border: none; border-radius: 8px; padding: 10px 24px; font-size: 15px; cursor: pointer; margin-top: 12px; width: 100%; }
+  .btn:hover { background: #1a70d4; }
+  .btn:disabled { background: #9cc3e5; cursor: not-allowed; }
+  .result { margin-top: 20px; }
+  .result-item { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+  .result-label { color: #656d76; min-width: 80px; flex-shrink: 0; }
+  .result-value { color: #1d2129; }
+  .tag { display: inline-block; background: #e8f0fe; color: #1d81e2; border-radius: 6px; padding: 2px 8px; font-size: 12px; }
+  .history-title { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
+  .record-item { padding: 12px; border-bottom: 1px solid #f0f0f0; }
+  .record-meta { font-size: 12px; color: #656d76; margin-bottom: 4px; }
+  .record-kp { font-size: 14px; font-weight: 500; }
+  .record-cause { font-size: 13px; color: #555; margin-top: 4px; }
+  .stats-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .stat-pill { background: #fff; border: 1px solid #d0d7de; border-radius: 20px; padding: 4px 12px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>数学错题分析</h1>
+
+  <div class="card">
+    <label class="upload-area" id="drop">
+      <div class="upload-icon">📷</div>
+      <div class="upload-tip">点击上传错题照片，或直接拍照</div>
+      <input type="file" accept="image/*" id="imgInput" onchange="handleFile(this.files[0])">
+    </label>
+    <img id="preview" alt="预览">
+    <input class="extra-input" type="text" id="extraInput" placeholder="附加说明（可选）：如学生年级、错题来源…">
+    <button class="btn" id="submitBtn" onclick="submit()" disabled>开始分析</button>
+  </div>
+
+  <div id="resultArea" class="card result" style="display:none">
+    <h2 style="font-size:16px;margin-bottom:12px">分析结果</h2>
+    <div class="result-item"><span class="result-label">科目/年级</span><span class="result-value" id="rGrade"></span></div>
+    <div class="result-item"><span class="result-label">错误类型</span><span class="result-value"><span class="tag" id="rType"></span></span></div>
+    <div class="result-item"><span class="result-label">知识点</span><span class="result-value" id="rKP"></span></div>
+    <div class="result-item"><span class="result-label">根因分析</span><span class="result-value" id="rCause"></span></div>
+    <div class="result-item"><span class="result-label">正确解法</span><span class="result-value" id="rSolution"></span></div>
+    <div class="result-item"><span class="result-label">记忆口诀</span><span class="result-value" id="rTip"></span></div>
+    <div class="result-item"><span class="result-label">同类题</span><span class="result-value" id="rSimilar"></span></div>
+    <div class="result-item"><span class="result-label">置信度</span><span class="result-value" id="rConf"></span></div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="history-title">📊 今日统计</div>
+    <div class="stats-bar" id="statsArea"></div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="history-title">📋 历史记录</div>
+    <div id="historyArea"></div>
+  </div>
+</div>
+
+<script>
+let file = null;
+
+function handleFile(f) {
+  if (!f) return;
+  file = f;
+  document.getElementById('preview').src = URL.createObjectURL(f);
+  document.getElementById('preview').style.display = 'block';
+  document.getElementById('submitBtn').disabled = false;
+}
+
+async function submit() {
+  if (!file) return;
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = '分析中…';
+
+  const form = new FormData();
+  form.append('image', file);
+  form.append('extra', document.getElementById('extraInput').value);
+
+  try {
+    const resp = await fetch('/api/analyze', { method: 'POST', body: form });
+    const data = await resp.json();
+    showResult(data);
+    loadHistory();
+    loadStats();
+  } catch(e) {
+    alert('分析失败: ' + e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '开始分析';
+  }
+}
+
+function showResult(d) {
+  document.getElementById('resultArea').style.display = 'block';
+  document.getElementById('rGrade').textContent = (d.subject || '') + ' / ' + (d.grade || '');
+  document.getElementById('rType').textContent = d.error_type || '';
+  document.getElementById('rKP').textContent = d.knowledge_point || '';
+  document.getElementById('rCause').textContent = d.root_cause || '';
+  document.getElementById('rSolution').textContent = d.correct_solution || '';
+  document.getElementById('rTip').textContent = d.memory_tip || '';
+  document.getElementById('rSimilar').textContent = Array.isArray(d.similar_problems) ? d.similar_problems.join('；') : '';
+  document.getElementById('rConf').textContent = d.confidence ? (d.confidence * 100).toFixed(0) + '%' : '';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function loadStats() {
+  const resp = await fetch('/api/stats');
+  const data = await resp.json();
+  document.getElementById('statsArea').innerHTML = data.map(s =>
+    '<span class="stat-pill">' + (s.error_type||'') + ' ×' + s.count + '</span>'
+  ).join('');
+}
+
+async function loadHistory() {
+  const resp = await fetch('/api/records');
+  const data = await resp.json();
+  document.getElementById('historyArea').innerHTML = data.slice(0,10).map(r => 
+    '<div class="record-item">' +
+      '<div class="record-meta">' + (r.created_at||'').slice(0,16) + ' · <span class="tag">' + (r.error_type||'') + '</span></div>' +
+      '<div class="record-kp">' + (r.knowledge_point||'') + '</div>' +
+      '<div class="record-cause">' + (r.root_cause||'') + '</div>' +
+    '</div>'
+  ).join('');
+}
+
+loadStats();
+loadHistory();
+</script>
+</body>
+</html>
