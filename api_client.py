@@ -2,10 +2,10 @@
 DeepSeek API 调用封装
 """
 
-import httpx
 import os
+import httpx
 
-API_KEY = open(os.path.expanduser("~/.api_keys/deepseek")).read().strip()
+API_KEY = os.environ.get("DEEPSEEK_API_KEY") or open(os.path.expanduser("~/.api_keys/deepseek")).read().strip()
 BASE_URL = "https://api.deepseek.com"
 
 MODEL = "deepseek-chat"
@@ -14,9 +14,6 @@ SYSTEM_PROMPT = open(os.path.expanduser("~/math-error-analyzer/prompt.py")).read
 
 
 def analyze_image(image_b64: str, extra_context: str = "") -> dict:
-    """
-    发送图片到 DeepSeek，返回结构化 JSON 分析结果
-    """
     user_content = f"""
 这是一道数学错题的拍照图片。请分析并返回以下格式的 JSON（直接返回 JSON，不要加 markdown 标记）：
 
@@ -44,16 +41,8 @@ def analyze_image(image_b64: str, extra_context: str = "") -> dict:
             {
                 "role": "user",
                 "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{image_b64}"
-                        }
-                    },
-                    {
-                        "type": "text",
-                        "text": user_content
-                    }
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
+                    {"type": "text", "text": user_content}
                 ]
             }
         ],
@@ -65,20 +54,13 @@ def analyze_image(image_b64: str, extra_context: str = "") -> dict:
         resp = client.post(
             f"{BASE_URL}/chat/completions",
             json=payload,
-            headers={
-                "Authorization": f"Bearer {API_KEY}",
-                "Content-Type": "application/json",
-            },
+            headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
         )
         resp.raise_for_status()
-        content = resp.json()["choices"][0]["message"]["content"]
-        return content
+        return resp.json()["choices"][0]["message"]["content"]
 
 
 def analyze_text(question: str, answer: str, student_answer: str, extra_context: str = "") -> dict:
-    """
-    纯文本模式分析（不需要图片时使用）
-    """
     user_content = f"""
 题目：{question}
 正确答案：{answer}
@@ -117,10 +99,7 @@ def analyze_text(question: str, answer: str, student_answer: str, extra_context:
         resp = client.post(
             f"{BASE_URL}/chat/completions",
             json=payload,
-            headers={
-                "Authorization": f"Bearer {API_KEY}",
-                "Content-Type": "application/json",
-            },
+            headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
         )
         resp.raise_for_status()
         return resp.json()["choices"][0]["message"]["content"]
