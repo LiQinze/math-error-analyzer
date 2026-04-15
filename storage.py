@@ -11,7 +11,7 @@ _use_pg = bool(os.environ.get("DATABASE_URL"))
 
 # ── PostgreSQL ──────────────────────────────────────────────
 if _use_pg:
-    import psycopg2
+    import psycopg3 as psycopg
     DB_URL = os.environ["DATABASE_URL"]
     def _pg(): return psycopg2.connect(DB_URL)
 
