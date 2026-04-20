@@ -2,9 +2,10 @@
 main.py 调用接口: save_record(ai_raw_text, image_b64)
 """
 
-import json, os, re, sqlite3
+import json, os, re, socket, sqlite3
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 BEIJING_TZ = timezone(timedelta(hours=8))
 _use_pg = bool(os.environ.get("DATABASE_URL"))
@@ -12,9 +13,50 @@ _use_pg = bool(os.environ.get("DATABASE_URL"))
 # ── PostgreSQL ──────────────────────────────────────────────
 if _use_pg:
     import psycopg
+
     DB_URL = os.environ["DATABASE_URL"]
+
+    def _pg_url_with_ipv4_hostaddr(url: str) -> str:
+        """Render 等环境无 IPv6 出站时，Supabase 可能只解析到 IPv6。通过 hostaddr 强制走 IPv4。"""
+        parsed = urlparse(url)
+        host = parsed.hostname
+        port = parsed.port or 5432
+        if not host:
+            return url
+        try:
+            addrs = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)
+        except OSError:
+            return url
+        if not addrs:
+            return url
+        ipv4 = addrs[0][4][0]
+        q = dict(parse_qsl(parsed.query, keep_blank_values=True))
+        if q.get("hostaddr"):
+            return url
+        q["hostaddr"] = ipv4
+        new_query = urlencode(q)
+        return urlunparse(
+            (parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment)
+        )
+
     def _pg():
-        return psycopg.connect(DB_URL)
+        force = os.environ.get("PG_FORCE_IPV4", "").strip().lower() in ("1", "true", "yes", "on")
+        if force:
+            return psycopg.connect(_pg_url_with_ipv4_hostaddr(DB_URL))
+        try:
+            return psycopg.connect(DB_URL)
+        except psycopg.OperationalError as exc:
+            msg = str(exc).lower()
+            if any(
+                s in msg
+                for s in (
+                    "network is unreachable",
+                    "no route to host",
+                    "connection timed out",
+                )
+            ):
+                return psycopg.connect(_pg_url_with_ipv4_hostaddr(DB_URL))
+            raise
 
     def init_db() -> None:
         with _pg() as conn:
