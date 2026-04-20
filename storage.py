@@ -2,6 +2,7 @@
 main.py 调用接口: save_record(ai_raw_text, image_b64)
 """
 
+import ipaddress
 import json, os, re, socket, sqlite3
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -23,6 +24,13 @@ if _use_pg:
         port = parsed.port or 5432
         if not host:
             return url
+        # 已是合法 IP 字面量时：IPv4 可直接连；IPv6 字面量无法在此推导 IPv4，请改用 Pooler 或域名连接串
+        try:
+            ipaddress.ip_address(host)
+            # 已是 IPv4/IPv6 字面量：不追加 hostaddr（IPv4 可直接连；IPv6 无 IPv4 时请换 Pooler 域名）
+            return url
+        except ValueError:
+            pass
         try:
             addrs = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)
         except OSError:
