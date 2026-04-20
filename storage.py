@@ -11,9 +11,10 @@ _use_pg = bool(os.environ.get("DATABASE_URL"))
 
 # ── PostgreSQL ──────────────────────────────────────────────
 if _use_pg:
-    import psycopg3 as psycopg
+    import psycopg
     DB_URL = os.environ["DATABASE_URL"]
-    def _pg(): return psycopg2.connect(DB_URL)
+    def _pg():
+        return psycopg.connect(DB_URL)
 
     def init_db() -> None:
         with _pg() as conn:
@@ -36,11 +37,12 @@ if _use_pg:
     def health_snapshot() -> dict[str, Any]:
         try:
             with _pg() as conn:
-                with conn.cursor() as c: c.execute("SELECT COUNT(*) FROM error_records")
-                count = c.fetchone()[0]
+                with conn.cursor() as cur:
+                    cur.execute("SELECT COUNT(*) FROM error_records")
+                    count = cur.fetchone()[0]
             return {"db_path": "PostgreSQL", "db_exists": True,
                     "db_writable": True, "db_size_bytes": 0,
-                    "model": {"configured": True}, "last_write": {"ok": True}}
+                    "record_count": int(count), "last_write": {"ok": True}}
         except Exception as e:
             return {"db_writable": False, "error": str(e)}
 

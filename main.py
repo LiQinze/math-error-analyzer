@@ -21,7 +21,8 @@ async def index():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "db_path": os.environ.get("RENDER_DISK_PATH", "/tmp")}
+    snap = storage.health_snapshot()
+    return {"status": "ok" if snap.get("db_writable", False) else "degraded", "storage": snap}
 
 
 @app.post("/api/analyze")
