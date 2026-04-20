@@ -18,6 +18,11 @@
 2. **强制 IPv4**：设置环境变量 `PG_FORCE_IPV4=1`。
 3. **使用 Supabase Connection Pooling**：在控制台使用 **Session mode** 的 Pooler 连接串（端口常为 `6543`），通常走 IPv4 友好路径。
 
+### 报错：`urllib.parse` / `_check_bracketed_host` / `ip_address`
+
+若 `DATABASE_URL` 里的**密码含 `@`、`:`、`[` 等字符**，必须用 **URL 百分号编码**（Supabase 控制台「复制连接串」一般已编码）。  
+服务端解析 IPv4 回退时使用 `psycopg.conninfo`（与 libpq 一致），**不要**用 `urllib.parse` 拆整段 URI，否则会误把密码当成 host 段触发上述错误。
+
 ## 其他
 
 - `DEEPSEEK_API_KEY`：必填（或按 `api_client.py` 说明配置本地 key 文件，不推荐用于生产）。
