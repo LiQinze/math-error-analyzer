@@ -15,8 +15,9 @@
 处理方式（任选其一）：
 
 1. **推荐（代码已支持）**：保持 `DATABASE_URL` 不变，部署包含 `storage.py` 中「IPv4 hostaddr 回退」的版本；首次连接失败时会自动解析 IPv4 并重试。
-2. **强制 IPv4**：设置环境变量 `PG_FORCE_IPV4=1`。
-3. **使用 Supabase Connection Pooling**：在控制台使用 **Session mode** 的 Pooler 连接串（端口常为 `6543`），通常走 IPv4 友好路径。
+2. **强制 IPv4**：设置环境变量 `PG_FORCE_IPV4=1`（将**严格**使用 IPv4：若 DNS 无 A 记录会报错并提示改用 Pooler 或 `PG_HOSTADDR`）。
+3. **使用 Supabase Connection Pooling（强烈推荐）**：在控制台使用 **Session mode** 的 Pooler 连接串（端口常为 `6543`），主机名与直连 `db.*.supabase.co` 不同，通常可避开纯 IPv6 路径问题。
+4. **手动指定 IPv4**：在本机执行 `nslookup db.xxx.supabase.co` 若能看到 IPv4，可在 Render 增加 `PG_HOSTADDR=<该 IPv4>`（与 `DATABASE_URL` 同用）。
 
 ### 报错：`urllib.parse` / `_check_bracketed_host` / `ip_address`
 

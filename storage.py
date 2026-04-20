@@ -17,14 +17,18 @@ if _use_pg:
 
     DB_URL = os.environ["DATABASE_URL"]
 
-    def _pg_conninfo_with_ipv4_hostaddr(url: str) -> str:
+    def _pg_conninfo_with_ipv4_hostaddr(url: str, *, strict: bool) -> str:
         """Render 无 IPv6 出站时，用 hostaddr 走 IPv4。用 libpq 解析连接串，避免 urllib 误解析密码中的 @ 等字符。"""
         try:
             params = conninfo_to_dict(url)
         except Exception:
+            if strict:
+                raise
             return url
         host = (params.get("host") or "").strip()
         if not host:
+            if strict:
+                raise RuntimeError("DATABASE_URL 缺少 host")
             return url
         try:
             ipaddress.ip_address(host)
@@ -37,25 +41,56 @@ if _use_pg:
             port = 5432
         if params.get("hostaddr"):
             return url
+
+        manual = os.environ.get("PG_HOSTADDR", "").strip()
+        if manual:
+            try:
+                ip = ipaddress.ip_address(manual)
+            except ValueError as exc:
+                raise RuntimeError("PG_HOSTADDR 必须是合法 IP 地址") from exc
+            if not isinstance(ip, ipaddress.IPv4Address):
+                raise RuntimeError("Render 无 IPv6 出站时 PG_HOSTADDR 请填 IPv4")
+            merged = dict(params)
+            merged["hostaddr"] = manual
+            clean = {k: v for k, v in merged.items() if v is not None and v != ""}
+            return make_conninfo(**clean)
+
+        ipv4: str | None = None
         try:
-            addrs = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)
-        except OSError:
+            addrs = socket.getaddrinfo(host, port, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        except OSError as exc:
+            if strict:
+                raise RuntimeError(f"无法解析数据库主机名 {host!r}: {exc}") from exc
             return url
-        if not addrs:
+        for _fam, _type, _proto, _canon, sockaddr in addrs:
+            if _fam == socket.AF_INET and len(sockaddr) >= 2:
+                ipv4 = sockaddr[0]
+                break
+        if not ipv4:
+            msg = (
+                f"DNS 未返回 {host!r} 的 IPv4 地址（Render 无法使用纯 IPv6 直连）。"
+                "请任选其一：1) 在 Supabase 使用 Connection Pooling 的 Session 连接串（端口常为 6543）；"
+                "2) 在本机用 nslookup/ping 查到 IPv4 后设置环境变量 PG_HOSTADDR=<该IPv4>。"
+            )
+            if strict:
+                raise RuntimeError(msg)
             return url
-        ipv4 = addrs[0][4][0]
+
         merged = dict(params)
         merged["hostaddr"] = ipv4
         clean = {k: v for k, v in merged.items() if v is not None and v != ""}
         try:
             return make_conninfo(**clean)
-        except Exception:
+        except Exception as exc:
+            if strict:
+                raise RuntimeError(f"构建连接参数失败: {exc}") from exc
             return url
 
     def _pg():
         force = os.environ.get("PG_FORCE_IPV4", "").strip().lower() in ("1", "true", "yes", "on")
         if force:
-            return psycopg.connect(_pg_conninfo_with_ipv4_hostaddr(DB_URL))
+            ci = _pg_conninfo_with_ipv4_hostaddr(DB_URL, strict=True)
+            return psycopg.connect(ci)
         try:
             return psycopg.connect(DB_URL)
         except psycopg.OperationalError as exc:
@@ -68,7 +103,8 @@ if _use_pg:
                     "connection timed out",
                 )
             ):
-                return psycopg.connect(_pg_conninfo_with_ipv4_hostaddr(DB_URL))
+                ci = _pg_conninfo_with_ipv4_hostaddr(DB_URL, strict=False)
+                return psycopg.connect(ci)
             raise
 
     def init_db() -> None:
